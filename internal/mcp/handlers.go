@@ -171,10 +171,8 @@ func (s *Server) handleGetCode(args json.RawMessage) (interface{}, *jsonrpcError
 		return nil, &jsonrpcError{Code: codeInvalidParams, Message: "read: " + err.Error()}
 	}
 
-	lineCount := 1
-	if len(content) == 0 {
-		lineCount = 0
-	} else {
+	var lineCount int
+	if len(content) > 0 {
 		lineCount = strings.Count(content, "\n") + 1
 	}
 	if lineCount > s.maxLines {

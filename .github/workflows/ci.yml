@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: vet
+        run: go vet ./...
+      - name: test
+        run: go test ./... -race
+      - name: build
+        run: CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=$(git describe --tags --always 2>/dev/null || echo dev)" -o kv.mcp .
+      - name: binary size
+        run: |
+          SIZE=$(stat -c%s kv.mcp)
+          echo "Binary size: $SIZE bytes"
+          if [ $SIZE -gt 15728640 ]; then
+            echo "ERROR: binary exceeds 15MB limit"
+            exit 1
+          fi
+      - name: e2e smoke
+        run: bash test/e2e/smoke_test.sh
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.11.4

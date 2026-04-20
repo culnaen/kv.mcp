@@ -75,7 +75,7 @@ func (s *Server) Run(r io.Reader, w io.Writer) error {
 	// Allow long lines; default bufio.MaxScanTokenSize is 64KB which is too small for some payloads.
 	scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
 	writer := bufio.NewWriter(w)
-	defer writer.Flush()
+	defer writer.Flush() //nolint:errcheck
 
 	encode := func(resp jsonrpcResponse) error {
 		resp.JSONRPC = "2.0"

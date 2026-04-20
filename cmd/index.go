@@ -25,7 +25,7 @@ func IndexCmd(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
-	defer store.Close()
+	defer store.Close() //nolint:errcheck
 
 	start := time.Now()
 	count, err := index.IndexRoot(root, store, *verbose)

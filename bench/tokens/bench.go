@@ -52,7 +52,7 @@ func readLines(path string, offset, limit int) string {
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 
 	var out strings.Builder
 	scanner := bufio.NewScanner(f)
@@ -340,7 +340,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "open store: %v\n", err)
 		os.Exit(1)
 	}
-	defer store.Close()
+	defer store.Close() //nolint:errcheck
 
 	absRoot, err := filepath.Abs(*root)
 	if err != nil {
@@ -387,9 +387,7 @@ func main() {
 	// we're inside bench/tokens, trim the prefix for convenience.
 	out := *outPath
 	if _, err := os.Stat(filepath.Dir(out)); os.IsNotExist(err) {
-		if strings.HasPrefix(out, "bench/tokens/") {
-			out = strings.TrimPrefix(out, "bench/tokens/")
-		}
+		out = strings.TrimPrefix(out, "bench/tokens/")
 	}
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil && filepath.Dir(out) != "." {
 		fmt.Fprintf(os.Stderr, "mkdir: %v\n", err)

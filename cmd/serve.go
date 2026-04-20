@@ -27,16 +27,15 @@ func ServeCmd(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
-	defer store.Close()
+	defer store.Close() //nolint:errcheck
 
 	srv := mcp.NewServer(store, *root, *maxLines)
 
-	// handle SIGTERM/SIGINT
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
 		<-sigs
-		store.Close()
+		_ = store.Close()
 		os.Exit(0)
 	}()
 

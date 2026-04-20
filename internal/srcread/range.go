@@ -55,7 +55,7 @@ func Read(root, loc string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 
 	var lines []string
 	scanner := bufio.NewScanner(f)

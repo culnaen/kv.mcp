@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	bolt "go.etcd.io/bbolt"
+	bbolterrors "go.etcd.io/bbolt/errors"
 )
 
 // Store manages extracted and curated function records.
@@ -47,7 +48,7 @@ func Open(path string) (Store, error) {
 		return nil
 	})
 	if err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("init buckets: %w", err)
 	}
 	return &boltStore{db: db}, nil
@@ -61,10 +62,10 @@ func (s *boltStore) ClearExtracted() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.db.Update(func(tx *bolt.Tx) error {
-		if err := tx.DeleteBucket([]byte(BucketExtracted)); err != nil && err != bolt.ErrBucketNotFound {
+		if err := tx.DeleteBucket([]byte(BucketExtracted)); err != nil && err != bbolterrors.ErrBucketNotFound {
 			return err
 		}
-		if err := tx.DeleteBucket([]byte(BucketByFile)); err != nil && err != bolt.ErrBucketNotFound {
+		if err := tx.DeleteBucket([]byte(BucketByFile)); err != nil && err != bbolterrors.ErrBucketNotFound {
 			return err
 		}
 		if _, err := tx.CreateBucket([]byte(BucketExtracted)); err != nil {

@@ -1,0 +1,52 @@
+[
+  {
+    "id": 1,
+    "query": "Dial",
+    "justification": "Trace the outbound connection establishment path — core to understanding proxy behavior"
+  },
+  {
+    "id": 2,
+    "query": "Register",
+    "justification": "Find protocol handler and feature registration points — reveals plugin/extension architecture"
+  },
+  {
+    "id": 3,
+    "query": "ServeHTTP",
+    "justification": "Locate HTTP handler implementations — entry points for inbound HTTP/HTTPS traffic"
+  },
+  {
+    "id": 4,
+    "query": "ParseConfig",
+    "justification": "Understand configuration parsing — how JSON/TOML config maps to internal structures"
+  },
+  {
+    "id": 5,
+    "query": "NewHandler",
+    "justification": "Find handler constructors across proxy protocols — shows factory patterns and DI wiring"
+  },
+  {
+    "id": 6,
+    "query": "Process",
+    "justification": "Core packet/connection processing pipeline — the main data-plane flow for any proxy protocol"
+  },
+  {
+    "id": 7,
+    "query": "WriteLog",
+    "justification": "Locate logging infrastructure — understand access log format, structured fields, and log levels"
+  },
+  {
+    "id": 8,
+    "query": "Dispatch",
+    "justification": "Find traffic dispatcher logic — how connections are routed from inbound to outbound handlers"
+  },
+  {
+    "id": 9,
+    "query": "ReadHeader",
+    "justification": "Locate protocol header parsing — reveals wire format for VMess, VLESS, Trojan, etc."
+  },
+  {
+    "id": 10,
+    "query": "AddUser",
+    "justification": "Find dynamic user management — how users are added/removed at runtime without restart"
+  }
+]

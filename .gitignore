@@ -1,0 +1,6 @@
+.omc/
+.claude/
+.github/
+/kv.mcp
+/tokens
+.kv.mcp.db

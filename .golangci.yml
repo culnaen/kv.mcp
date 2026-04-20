@@ -6,11 +6,10 @@ linters:
     - errcheck
     - staticcheck
     - ineffassign
-
-linters-settings:
-  errcheck:
-    check-type-assertions: false
-    check-blank: false
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
 
 issues:
   max-issues-per-linter: 0

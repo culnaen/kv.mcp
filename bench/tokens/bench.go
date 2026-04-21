@@ -314,8 +314,8 @@ func main() {
 	qpath := *queriesPath
 	if qpath == "" {
 		candidates := []string{
+			"bench/tokens/testdata/xray-core-queries.json",
 			"testdata/xray-core-queries.json",
-			"../../testdata/xray-core-queries.json",
 		}
 		for _, c := range candidates {
 			if _, err := os.Stat(c); err == nil {

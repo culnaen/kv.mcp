@@ -50,7 +50,7 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o kv.mcp .
 ./kv.mcp index --db /absolute/path/to/.kv.mcp.db /path/to/your/project
 ```
 
-> **Note:** v1 indexes host GOOS/GOARCH only. Files behind non-host platform tags (`_windows.go` on Linux) are skipped. Cross-platform coverage is v2 scope.
+> **Note:** Indexes host GOOS/GOARCH only by default. Use `--tags` to include code behind specific build tags. Full cross-platform coverage (multiple GOOS/GOARCH) is v2 scope.
 
 > **Important:** Stop `kv.mcp serve` before re-indexing the same DB (bbolt single-writer constraint).
 
@@ -81,7 +81,7 @@ Start a new Claude Code session — the tools appear automatically.
 |------|-------------|
 | `search(query)` | Case-insensitive substring search across function names and descriptions. Returns up to 50 matches. |
 | `get_function(name)` | Full metadata for a function: loc, description, depends, test. Partial names return all matches. |
-| `get_code(loc)` | Read source lines for a loc string (e.g. `proxy/socks/server.go:10-30`). Capped at `--max-lines` (default: 500). |
+| `get_code(loc)` | Read source lines for a loc string (e.g. `proxy/socks/server.go:10-30`). Capped at `--max-lines` (default: 150, hard cap 500). |
 | `update_function(name, ...)` | Write curated metadata. Persists across reindexing. |
 
 ### update_function merge contract
@@ -140,6 +140,8 @@ Tested on [Xray-core](https://github.com/XTLS/Xray-core) (~6,400 indexed functio
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--db` | required | Path to bbolt database file |
+| `--tags` | _(empty)_ | Build tags passed to `go/packages` (e.g. `--tags integration,linux`) |
+| `--verbose` | false | Print each indexed function name to stderr |
 | (positional) | required | Project root directory |
 
 ### `kv.mcp serve`
@@ -148,12 +150,12 @@ Tested on [Xray-core](https://github.com/XTLS/Xray-core) (~6,400 indexed functio
 |------|---------|-------------|
 | `--db` | required | Path to bbolt database file |
 | `--root` | required | Project root (used to resolve relative locs) |
-| `--max-lines` | 500 | Maximum lines returned by `get_code` |
+| `--max-lines` | 150 | Maximum lines returned by `get_code`. Hard cap: 500. Tuned against xray-core and docker/compose: p99 function size is ~120 lines. |
 
 ## Limitations
 
 - **Go only.** Multi-language support is v2 scope.
-- **Host platform.** Indexes GOOS/GOARCH of the machine running `index`. Files behind other platform tags are skipped.
+- **Host platform.** Indexes GOOS/GOARCH of the machine running `index`. Use `--tags` to include code behind specific build tags; cross-platform indexing (multiple GOOS/GOARCH) is v2 scope.
 - **Test heuristic.** `TestFoo` is attached to `Foo` by short-name match. May collide on common names.
 - **Single-writer.** bbolt allows one writer at a time. Stop `serve` before running `index` against the same DB.
 - **Description starts empty.** Extracted functions have no description until an agent calls `update_function`.

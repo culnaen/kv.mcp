@@ -15,12 +15,12 @@ func ServeCmd(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	dbPath := fs.String("db", "./.kv.mcp.db", "path to bbolt database (use absolute path)")
 	root := fs.String("root", ".", "project root for resolving relative loc paths")
-	maxLines := fs.Int("max-lines", 500, "max lines returned by get_code (hard ceiling: 2000)")
+	maxLines := fs.Int("max-lines", 150, "max lines returned by get_code (hard ceiling: 500)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *maxLines > 2000 {
-		*maxLines = 2000
+	if *maxLines > 500 {
+		*maxLines = 500
 	}
 
 	store, err := kv.Open(*dbPath)

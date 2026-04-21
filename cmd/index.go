@@ -13,6 +13,7 @@ func IndexCmd(args []string) error {
 	fs := flag.NewFlagSet("index", flag.ContinueOnError)
 	dbPath := fs.String("db", "./.kv.mcp.db", "path to bbolt database (use absolute path when CWD is unpredictable)")
 	verbose := fs.Bool("verbose", false, "verbose output")
+	tags := fs.String("tags", "", "build tags to pass to go/packages (e.g. integration,linux)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -28,7 +29,7 @@ func IndexCmd(args []string) error {
 	defer store.Close() //nolint:errcheck
 
 	start := time.Now()
-	count, err := index.IndexRoot(root, store, *verbose)
+	count, err := index.IndexRoot(root, store, *verbose, *tags)
 	if err != nil {
 		return fmt.Errorf("index: %w", err)
 	}

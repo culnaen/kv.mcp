@@ -13,14 +13,14 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const maxDepends = 20
+const maxDepends = 50
 
 // IndexRoot indexes all Go packages under root, writing ExtractedFunction
 // records to the store. Uses packages.Load with NeedName|NeedFiles|NeedSyntax|
 // NeedTypes|NeedTypesInfo on default build context (host GOOS/GOARCH only).
 // Errors per package are logged to stderr; indexing continues.
 // Returns total count of indexed functions.
-func IndexRoot(root string, store kv.Store, verbose bool) (int, error) {
+func IndexRoot(root string, store kv.Store, verbose bool, tags string) (int, error) {
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return 0, fmt.Errorf("resolve root: %w", err)
@@ -31,6 +31,9 @@ func IndexRoot(root string, store kv.Store, verbose bool) (int, error) {
 			packages.NeedTypes | packages.NeedTypesInfo,
 		Dir:   absRoot,
 		Tests: true,
+	}
+	if tags != "" {
+		cfg.BuildFlags = []string{"-tags=" + tags}
 	}
 	pkgs, err := packages.Load(cfg, "./...")
 	if err != nil {

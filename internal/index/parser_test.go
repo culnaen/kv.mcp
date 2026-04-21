@@ -43,7 +43,7 @@ func containsStr(ss []string, want string) bool {
 
 func TestIndexFixtures(t *testing.T) {
 	store := openTestStore(t)
-	count, err := IndexRoot("fixtures", store, false)
+	count, err := IndexRoot("fixtures", store, false, "")
 	if err != nil {
 		t.Fatalf("IndexRoot: %v", err)
 	}
@@ -102,12 +102,12 @@ func TestIndexFixtures(t *testing.T) {
 
 func TestIdempotent(t *testing.T) {
 	store := openTestStore(t)
-	if _, err := IndexRoot("fixtures", store, false); err != nil {
+	if _, err := IndexRoot("fixtures", store, false, ""); err != nil {
 		t.Fatalf("first IndexRoot: %v", err)
 	}
 	first := collectExtracted(t, store)
 
-	if _, err := IndexRoot("fixtures", store, false); err != nil {
+	if _, err := IndexRoot("fixtures", store, false, ""); err != nil {
 		t.Fatalf("second IndexRoot: %v", err)
 	}
 	second := collectExtracted(t, store)
@@ -144,7 +144,7 @@ func TestPreservesCurated(t *testing.T) {
 		t.Fatalf("seed curated: %v", err)
 	}
 
-	if _, err := IndexRoot("fixtures", store, false); err != nil {
+	if _, err := IndexRoot("fixtures", store, false, ""); err != nil {
 		t.Fatalf("IndexRoot: %v", err)
 	}
 

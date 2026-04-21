@@ -2,12 +2,31 @@ package kv
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 
 	bolt "go.etcd.io/bbolt"
 	bbolterrors "go.etcd.io/bbolt/errors"
 )
+
+// errStop is returned by ForEach callbacks to halt iteration early.
+// It is suppressed internally; callers never see it.
+var errStop = errors.New("stop iteration")
+
+// locFilePath extracts the file path from a loc string ("relpath/file.go:10-20").
+func locFilePath(loc, root string) string {
+	for i := len(loc) - 1; i >= 0; i-- {
+		if loc[i] == ':' {
+			p := loc[:i]
+			if root != "" {
+				return root + "/" + p
+			}
+			return p
+		}
+	}
+	return loc
+}
 
 // Store manages extracted and curated function records.
 type Store interface {
@@ -17,7 +36,6 @@ type Store interface {
 
 	PutCurated(f CuratedFunction) error
 	GetCurated(name string) (CuratedFunction, bool, error)
-	ScanCurated(fn func(CuratedFunction) bool) error
 
 	GetMerged(name, root string) (Function, bool, error)
 	ScanMerged(root string, fn func(Function) bool) error
@@ -36,14 +54,10 @@ func Open(path string) (Store, error) {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 	err = db.Update(func(tx *bolt.Tx) error {
-		for _, name := range []string{BucketExtracted, BucketCurated, BucketByFile, BucketMeta} {
+		for _, name := range []string{BucketExtracted, BucketCurated} {
 			if _, err := tx.CreateBucketIfNotExists([]byte(name)); err != nil {
 				return err
 			}
-		}
-		meta := tx.Bucket([]byte(BucketMeta))
-		if meta.Get([]byte("schema_version")) == nil {
-			return meta.Put([]byte("schema_version"), []byte(SchemaVersion))
 		}
 		return nil
 	})
@@ -65,13 +79,7 @@ func (s *boltStore) ClearExtracted() error {
 		if err := tx.DeleteBucket([]byte(BucketExtracted)); err != nil && err != bbolterrors.ErrBucketNotFound {
 			return err
 		}
-		if err := tx.DeleteBucket([]byte(BucketByFile)); err != nil && err != bbolterrors.ErrBucketNotFound {
-			return err
-		}
-		if _, err := tx.CreateBucket([]byte(BucketExtracted)); err != nil {
-			return err
-		}
-		_, err := tx.CreateBucket([]byte(BucketByFile))
+		_, err := tx.CreateBucket([]byte(BucketExtracted))
 		return err
 	})
 }
@@ -84,48 +92,27 @@ func (s *boltStore) PutExtracted(f ExtractedFunction) error {
 		if err != nil {
 			return err
 		}
-		if err := tx.Bucket([]byte(BucketExtracted)).Put([]byte(f.Name), data); err != nil {
-			return err
-		}
-		// update by_file index
-		filePath := locFilePath(f.Loc, "")
-		b := tx.Bucket([]byte(BucketByFile))
-		var names []string
-		if v := b.Get([]byte(filePath)); v != nil {
-			_ = json.Unmarshal(v, &names)
-		}
-		// avoid duplicates
-		found := false
-		for _, n := range names {
-			if n == f.Name {
-				found = true
-				break
-			}
-		}
-		if !found {
-			names = append(names, f.Name)
-		}
-		data, err = json.Marshal(names)
-		if err != nil {
-			return err
-		}
-		return b.Put([]byte(filePath), data)
+		return tx.Bucket([]byte(BucketExtracted)).Put([]byte(f.Name), data)
 	})
 }
 
 func (s *boltStore) ScanExtracted(fn func(ExtractedFunction) bool) error {
-	return s.db.View(func(tx *bolt.Tx) error {
+	err := s.db.View(func(tx *bolt.Tx) error {
 		return tx.Bucket([]byte(BucketExtracted)).ForEach(func(k, v []byte) error {
 			var f ExtractedFunction
 			if err := json.Unmarshal(v, &f); err != nil {
 				return err
 			}
 			if !fn(f) {
-				return fmt.Errorf("stop") // sentinel to stop iteration
+				return errStop
 			}
 			return nil
 		})
 	})
+	if errors.Is(err, errStop) {
+		err = nil
+	}
+	return err
 }
 
 func (s *boltStore) PutCurated(f CuratedFunction) error {
@@ -158,21 +145,6 @@ func (s *boltStore) GetCurated(name string) (CuratedFunction, bool, error) {
 	return f, true, nil
 }
 
-func (s *boltStore) ScanCurated(fn func(CuratedFunction) bool) error {
-	return s.db.View(func(tx *bolt.Tx) error {
-		return tx.Bucket([]byte(BucketCurated)).ForEach(func(k, v []byte) error {
-			var f CuratedFunction
-			if err := json.Unmarshal(v, &f); err != nil {
-				return err
-			}
-			if !fn(f) {
-				return fmt.Errorf("stop")
-			}
-			return nil
-		})
-	})
-}
-
 func (s *boltStore) GetMerged(name, root string) (Function, bool, error) {
 	var ef ExtractedFunction
 	var cf *CuratedFunction
@@ -201,7 +173,7 @@ func (s *boltStore) GetMerged(name, root string) (Function, bool, error) {
 }
 
 func (s *boltStore) ScanMerged(root string, fn func(Function) bool) error {
-	return s.db.View(func(tx *bolt.Tx) error {
+	err := s.db.View(func(tx *bolt.Tx) error {
 		curatedBucket := tx.Bucket([]byte(BucketCurated))
 		return tx.Bucket([]byte(BucketExtracted)).ForEach(func(k, v []byte) error {
 			var ef ExtractedFunction
@@ -216,9 +188,13 @@ func (s *boltStore) ScanMerged(root string, fn func(Function) bool) error {
 				}
 			}
 			if !fn(MergeFunction(ef, cf, root)) {
-				return fmt.Errorf("stop")
+				return errStop
 			}
 			return nil
 		})
 	})
+	if errors.Is(err, errStop) {
+		err = nil
+	}
+	return err
 }

@@ -122,7 +122,7 @@ func (s *Server) Run(r io.Reader, w io.Writer) error {
 		result, rpcErr := s.dispatch(req.Method, req.Params)
 
 		if isNotification {
-			// Notifications get no response.
+			// Notifications never get a response; dispatch result is intentionally discarded.
 			if req.Method == "notifications/initialized" {
 				s.logger.Printf("client initialized")
 			}

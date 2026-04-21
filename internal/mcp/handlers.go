@@ -86,7 +86,6 @@ type updateFunctionArgs struct {
 
 // --- handlers ---
 
-// handleGetFunction returns the merged record for name, or partial matches when exact lookup fails.
 func (s *Server) handleGetFunction(args json.RawMessage) (interface{}, *jsonrpcError) {
 	var a getFunctionArgs
 	if err := unmarshalArgs(args, &a); err != nil {
@@ -104,20 +103,13 @@ func (s *Server) handleGetFunction(args json.RawMessage) (interface{}, *jsonrpcE
 		return toolResult(f), nil
 	}
 
-	// Fallback: partial match on name (substring).
-	var matches []kv.Function
-	q := strings.ToLower(a.Name)
-	scanErr := s.store.ScanMerged(s.root, func(fn kv.Function) bool {
-		if strings.Contains(strings.ToLower(fn.Name), q) {
-			matches = append(matches, fn)
-			if len(matches) >= 50 {
-				return false
-			}
+	// Fallback: partial match via search cache.
+	matches, built := s.cache.search(a.Name)
+	if !built {
+		if err := s.cache.rebuild(s.store, s.root); err != nil {
+			return nil, &jsonrpcError{Code: codeInternalError, Message: "cache rebuild: " + err.Error()}
 		}
-		return true
-	})
-	if scanErr != nil && scanErr.Error() != "stop" {
-		return nil, &jsonrpcError{Code: codeInternalError, Message: "scan: " + scanErr.Error()}
+		matches, _ = s.cache.search(a.Name)
 	}
 	if len(matches) == 0 {
 		return nil, &jsonrpcError{Code: codeInvalidParams, Message: fmt.Sprintf("function not found: %s", a.Name)}
@@ -128,7 +120,6 @@ func (s *Server) handleGetFunction(args json.RawMessage) (interface{}, *jsonrpcE
 	return toolResult(map[string]interface{}{"matches": matches}), nil
 }
 
-// handleSearch returns up to 50 matches. Builds the cache lazily.
 func (s *Server) handleSearch(args json.RawMessage) (interface{}, *jsonrpcError) {
 	var a searchArgs
 	if err := unmarshalArgs(args, &a); err != nil {
@@ -156,7 +147,6 @@ func (s *Server) handleSearch(args json.RawMessage) (interface{}, *jsonrpcError)
 	return toolResult(payload), nil
 }
 
-// handleGetCode reads the requested lines and enforces the maxLines cap.
 func (s *Server) handleGetCode(args json.RawMessage) (interface{}, *jsonrpcError) {
 	var a getCodeArgs
 	if err := unmarshalArgs(args, &a); err != nil {
@@ -186,7 +176,6 @@ func (s *Server) handleGetCode(args json.RawMessage) (interface{}, *jsonrpcError
 	}), nil
 }
 
-// handleUpdateFunction persists a curated record with tri-state semantics.
 func (s *Server) handleUpdateFunction(args json.RawMessage) (interface{}, *jsonrpcError) {
 	var a updateFunctionArgs
 	if err := unmarshalArgs(args, &a); err != nil {
@@ -274,10 +263,6 @@ func decodeRawStringSlice(raw json.RawMessage) ([]string, bool, error) {
 	var v []string
 	if err := json.Unmarshal(raw, &v); err != nil {
 		return nil, false, err
-	}
-	if v == nil {
-		// "[]" unmarshals to non-nil empty slice, but be defensive.
-		v = []string{}
 	}
 	return v, true, nil
 }

@@ -22,11 +22,10 @@ func openTestStore(t *testing.T) kv.Store {
 func collectExtracted(t *testing.T, store kv.Store) map[string]kv.ExtractedFunction {
 	t.Helper()
 	out := map[string]kv.ExtractedFunction{}
-	err := store.ScanExtracted(func(f kv.ExtractedFunction) bool {
+	if err := store.ScanExtracted(func(f kv.ExtractedFunction) bool {
 		out[f.Name] = f
 		return true
-	})
-	if err != nil && err.Error() != "stop" {
+	}); err != nil {
 		t.Fatalf("scan: %v", err)
 	}
 	return out
@@ -47,8 +46,8 @@ func TestIndexFixtures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IndexRoot: %v", err)
 	}
-	if count < 3 {
-		t.Fatalf("expected at least 3 indexed functions, got %d", count)
+	if count < 5 {
+		t.Fatalf("expected at least 5 indexed functions (including generics), got %d", count)
 	}
 
 	got := collectExtracted(t, store)
@@ -97,6 +96,14 @@ func TestIndexFixtures(t *testing.T) {
 	}
 	if !foundAddTest {
 		t.Errorf("example.Add should have TestAdd attached, got Test=%v", add.Test)
+	}
+
+	// Generic receiver branches: IndexExpr (value receiver) and IndexListExpr (pointer receiver).
+	if _, ok := got["example.(Pair).Swap"]; !ok {
+		t.Errorf("example.(Pair).Swap not indexed; got keys %v", keys(got))
+	}
+	if _, ok := got["example.(*Triple).First"]; !ok {
+		t.Errorf("example.(*Triple).First not indexed; got keys %v", keys(got))
 	}
 }
 

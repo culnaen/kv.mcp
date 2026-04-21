@@ -20,39 +20,22 @@ func newTestStore(t *testing.T) (Store, string) {
 	return s, dir
 }
 
-// strPtr returns a pointer to s.
 func strPtr(s string) *string { return &s }
 
-// sliceRef returns a pointer to the given slice.
 func sliceRef(s []string) *[]string { return &s }
 
-// collectExtracted drains ScanExtracted into a slice.
 func collectExtracted(t *testing.T, s Store) []ExtractedFunction {
 	t.Helper()
 	var out []ExtractedFunction
-	err := s.ScanExtracted(func(f ExtractedFunction) bool {
+	if err := s.ScanExtracted(func(f ExtractedFunction) bool {
 		out = append(out, f)
 		return true
-	})
-	if err != nil && !strings.Contains(err.Error(), "stop") {
+	}); err != nil {
 		t.Fatalf("ScanExtracted: %v", err)
 	}
 	return out
 }
 
-// collectCurated drains ScanCurated into a slice.
-func collectCurated(t *testing.T, s Store) []CuratedFunction {
-	t.Helper()
-	var out []CuratedFunction
-	err := s.ScanCurated(func(f CuratedFunction) bool {
-		out = append(out, f)
-		return true
-	})
-	if err != nil && !strings.Contains(err.Error(), "stop") {
-		t.Fatalf("ScanCurated: %v", err)
-	}
-	return out
-}
 
 func TestPutAndScanExtracted(t *testing.T) {
 	s, _ := newTestStore(t)
@@ -238,8 +221,8 @@ func TestClearExtractedPreservesCurated(t *testing.T) {
 	if got := collectExtracted(t, s); len(got) != 0 {
 		t.Errorf("expected extracted wiped, got %d entries", len(got))
 	}
-	if got := collectCurated(t, s); len(got) != 1 {
-		t.Errorf("expected curated preserved, got %d entries", len(got))
+	if _, ok, err := s.GetCurated("pkg.Foo"); err != nil || !ok {
+		t.Errorf("expected curated preserved: ok=%v err=%v", ok, err)
 	}
 }
 
@@ -270,11 +253,10 @@ func TestScanMerged(t *testing.T) {
 	_ = s.PutCurated(CuratedFunction{Name: "B", Description: "curated B"})
 
 	seen := map[string]string{}
-	err := s.ScanMerged(root, func(f Function) bool {
+	if err := s.ScanMerged(root, func(f Function) bool {
 		seen[f.Name] = f.Description
 		return true
-	})
-	if err != nil && !strings.Contains(err.Error(), "stop") {
+	}); err != nil {
 		t.Fatalf("ScanMerged: %v", err)
 	}
 	if len(seen) != 2 {

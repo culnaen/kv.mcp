@@ -2,12 +2,15 @@ package kv
 
 import "os"
 
+// fileExists is a package-level variable so tests can override filesystem checks.
+var fileExists = func(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 const (
 	BucketExtracted = "functions_extracted"
 	BucketCurated   = "functions_curated"
-	BucketByFile    = "by_file"
-	BucketMeta      = "meta"
-	SchemaVersion   = "1"
 )
 
 // ExtractedFunction written only by indexer, overwritten on every reindex.
@@ -86,25 +89,10 @@ func MergeFunction(e ExtractedFunction, c *CuratedFunction, root string) Functio
 
 	// stale check: if loc file no longer exists
 	filePath := locFilePath(f.Loc, root)
-	if filePath != "" {
-		if _, err := os.Stat(filePath); err != nil {
-			f.Stale = true
-		}
+	if filePath != "" && !fileExists(filePath) {
+		f.Stale = true
 	}
 
 	return f
 }
 
-// locFilePath extracts the file path from a loc string ("relpath/file.go:10-20").
-func locFilePath(loc, root string) string {
-	for i := len(loc) - 1; i >= 0; i-- {
-		if loc[i] == ':' {
-			p := loc[:i]
-			if root != "" {
-				return root + "/" + p
-			}
-			return p
-		}
-	}
-	return loc
-}

@@ -5,7 +5,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -42,39 +41,6 @@ func approxTokens(s string) int {
 	return (len(s) + 3) / 4
 }
 
-// readLines reads at most limit lines starting at 1-indexed offset (inclusive).
-// If offset < 1 it is clamped to 1. Missing files return "".
-func readLines(path string, offset, limit int) string {
-	if offset < 1 {
-		offset = 1
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return ""
-	}
-	defer f.Close() //nolint:errcheck
-
-	var out strings.Builder
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
-	lineNum := 0
-	collected := 0
-	for scanner.Scan() {
-		lineNum++
-		if lineNum < offset {
-			continue
-		}
-		if collected >= limit {
-			break
-		}
-		if collected > 0 {
-			out.WriteByte('\n')
-		}
-		out.WriteString(scanner.Text())
-		collected++
-	}
-	return out.String()
-}
 
 // rgMatch is a decoded ripgrep --json line (text submatch events only).
 type rgMatch struct {
@@ -178,7 +144,7 @@ func runBaseline(queryStr, root string) (int, int) {
 		if offset < 1 {
 			offset = 1
 		}
-		content := readLines(hit.File, offset, 80)
+		content, _ := srcread.Read("", fmt.Sprintf("%s:%d-%d", hit.File, offset, offset+79))
 		tokens += approxTokens(content)
 		turns++
 	}
@@ -219,7 +185,7 @@ func runKV(queryStr, root string, store kv.Store) (int, int, int) {
 		}
 		return true
 	})
-	if scanErr != nil && scanErr.Error() != "stop" {
+	if scanErr != nil {
 		fmt.Fprintf(os.Stderr, "search error: %v\n", scanErr)
 	}
 

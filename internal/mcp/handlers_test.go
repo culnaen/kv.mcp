@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/culnaen/kv.mcp/internal/kv"
 )
@@ -151,6 +152,45 @@ func TestGetFunctionMissingReturnsError(t *testing.T) {
 	}
 }
 
+func TestGetFunctionPartialSingleMatch(t *testing.T) {
+	store, root := newTempStore(t)
+	writeFile(t, root, "a.go", "x\n")
+	seedExtracted(t, store, kv.ExtractedFunction{Name: "pkg.FooBar", Loc: "a.go:1-1", GodocStub: "FooBar stub."})
+	seedExtracted(t, store, kv.ExtractedFunction{Name: "pkg.Baz", Loc: "a.go:1-1", GodocStub: "Baz stub."})
+	s := NewServer(store, root, 500)
+
+	// Exact lookup of "FooBar" fails; fallback finds pkg.FooBar as single match.
+	out, rpcErr := callTool(t, s, "get_function", map[string]string{"name": "FooBar"})
+	if rpcErr != nil {
+		t.Fatalf("unexpected rpc error: %+v", rpcErr)
+	}
+	if out["name"] != "pkg.FooBar" {
+		t.Errorf("name=%v want pkg.FooBar", out["name"])
+	}
+}
+
+func TestGetFunctionPartialMultiMatch(t *testing.T) {
+	store, root := newTempStore(t)
+	writeFile(t, root, "a.go", "x\n")
+	seedExtracted(t, store, kv.ExtractedFunction{Name: "pkg.FooAlpha", Loc: "a.go:1-1"})
+	seedExtracted(t, store, kv.ExtractedFunction{Name: "pkg.FooBeta", Loc: "a.go:1-1"})
+	seedExtracted(t, store, kv.ExtractedFunction{Name: "pkg.Bar", Loc: "a.go:1-1"})
+	s := NewServer(store, root, 500)
+
+	// Exact lookup of "Foo" fails; fallback finds 2 matches.
+	out, rpcErr := callTool(t, s, "get_function", map[string]string{"name": "Foo"})
+	if rpcErr != nil {
+		t.Fatalf("unexpected rpc error: %+v", rpcErr)
+	}
+	matches, ok := out["matches"].([]interface{})
+	if !ok {
+		t.Fatalf("expected matches array, got %T: %v", out["matches"], out)
+	}
+	if len(matches) != 2 {
+		t.Errorf("matches count=%d want 2", len(matches))
+	}
+}
+
 func TestSearchSubstringMatches(t *testing.T) {
 	store, root := newTempStore(t)
 	writeFile(t, root, "a.go", "x\n")
@@ -166,6 +206,36 @@ func TestSearchSubstringMatches(t *testing.T) {
 	count, _ := out["count"].(float64)
 	if int(count) != 2 {
 		t.Errorf("count=%v want 2", out["count"])
+	}
+}
+
+func TestGetFunctionStale(t *testing.T) {
+	store, root := newTempStore(t)
+	// loc points to a file that does NOT exist → stale=true
+	seedExtracted(t, store, kv.ExtractedFunction{Name: "pkg.Gone", Loc: "pkg/gone.go:1-5"})
+	s := NewServer(store, root, 500)
+
+	out, rpcErr := callTool(t, s, "get_function", map[string]string{"name": "pkg.Gone"})
+	if rpcErr != nil {
+		t.Fatalf("unexpected rpc error: %+v", rpcErr)
+	}
+	if out["stale"] != true {
+		t.Errorf("stale=%v want true", out["stale"])
+	}
+}
+
+func TestGetFunctionNotStale(t *testing.T) {
+	store, root := newTempStore(t)
+	writeFile(t, root, "pkg/exists.go", "line1\nline2\nline3\nline4\nline5\n")
+	seedExtracted(t, store, kv.ExtractedFunction{Name: "pkg.Alive", Loc: "pkg/exists.go:1-5"})
+	s := NewServer(store, root, 500)
+
+	out, rpcErr := callTool(t, s, "get_function", map[string]string{"name": "pkg.Alive"})
+	if rpcErr != nil {
+		t.Fatalf("unexpected rpc error: %+v", rpcErr)
+	}
+	if stale, ok := out["stale"]; ok && stale == true {
+		t.Errorf("stale=%v want false/absent for existing file", stale)
 	}
 }
 
@@ -348,65 +418,46 @@ func TestConcurrentSearchAndUpdate(t *testing.T) {
 	}
 	s := NewServer(store, root, 500)
 
-	var wg sync.WaitGroup
 	stop := make(chan struct{})
+	var readerWg, writerWg sync.WaitGroup
 
-	// Readers.
 	for i := 0; i < 4; i++ {
-		wg.Add(1)
+		readerWg.Add(1)
 		go func() {
-			defer wg.Done()
+			defer readerWg.Done()
 			for {
 				select {
 				case <-stop:
 					return
 				default:
+					_, _ = callTool(t, s, "search", map[string]string{"query": "stub"})
 				}
-				_, _ = callTool(t, s, "search", map[string]string{"query": "stub"})
 			}
 		}()
 	}
 
-	// Writers.
 	for i := 0; i < 2; i++ {
-		wg.Add(1)
+		writerWg.Add(1)
 		go func(id int) {
-			defer wg.Done()
+			defer writerWg.Done()
 			for j := 0; j < 20; j++ {
-				select {
-				case <-stop:
-					return
-				default:
-				}
 				raw := fmt.Sprintf(`{"name":"pkg.Func%d","description":"writer%d-%d"}`, j%20, id, j)
 				_, _ = callToolRaw(t, s, "update_function", raw)
 			}
 		}(i)
 	}
 
-	// Let things run briefly.
 	done := make(chan struct{})
 	go func() {
-		wg.Wait()
+		writerWg.Wait()
+		close(stop)
+		readerWg.Wait()
 		close(done)
 	}()
 
-	// Writers finish after 40 calls; readers stop when we signal.
-	// Use a channel timeout loop instead of time.Sleep for determinism.
-	// Wait for writers to finish (they will exit on their own), then stop readers.
-	// Simpler: wait up to N iterations of wg via a goroutine above.
-	// Here we just close stop after a small number of iterations by polling.
-	// Instead, we poll for writer completion with a bounded counter.
-	for i := 0; i < 1_000_000; i++ {
-		select {
-		case <-done:
-			return
-		default:
-		}
-		if i > 500_000 {
-			close(stop)
-			break
-		}
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("TestConcurrentSearchAndUpdate timed out")
 	}
-	<-done
 }
